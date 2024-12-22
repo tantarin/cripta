@@ -1,4 +1,5 @@
 package tutorial;
+import org.json.JSONObject;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendSticker;
@@ -28,113 +29,173 @@ public class Bot extends TelegramLongPollingBot {
 
     @Override
     public String getBotToken() {
-        return "7641801953:AAFNbzraA6O41AZPCdscuQQiSLdl--ZKAfs";
+        return "635235291:AAGqrFFBa9y4UW2ej-Sxg9htXx8PXu3ep5w";
     }
 
     @Override
     public void onUpdateReceived(Update update) {
-        try {
-            //это ответ бота
-            String answer = "hello";
-            Long userId = null;
+        if (update.hasMessage() && update.getMessage().hasText()) {
+            Message message = update.getMessage();
+            String text = message.getText();
 
-            if (update.hasMessage() && update.getMessage().hasText()) { //если пользователь отправил боту текст
-
-                userId = whenUserSendTextToBot(update);
-
-            } else if (update.hasCallbackQuery()) { //проверка что именно нажатие на кнопку
-                CallbackQuery callbackQuery = update.getCallbackQuery(); //информация о нажатии на кнопку
-                whenUserClickOnButtonInBot(callbackQuery, userId, answer);
+            if ("/start".equals(text)) {
+                sendMenu(message.getChatId());
             }
+        } else if (update.hasCallbackQuery()) {
+            String callbackData = update.getCallbackQuery().getData();
+            String[] parts = callbackData.split(":"); // Например: BTC-USDT:STATS
+
+            if (parts.length == 2) {
+                String symbol = parts[0];
+                String type = parts[1];
+
+                if ("STATS".equals(type)) {
+                    String stats = getMarketStats(symbol);
+                    sendText(update.getCallbackQuery().getMessage().getChatId(), stats);
+                } else if ("HIGH_LOW".equals(type)) {
+                    String highLow = getMarketHighLow(symbol);
+                    sendText(update.getCallbackQuery().getMessage().getChatId(), highLow);
+                } else if ("VOLUME".equals(type)) {
+                    String volume = getMarketVolume(symbol);
+                    sendText(update.getCallbackQuery().getMessage().getChatId(), volume);
+                }
+            }
+        }
+    }
+
+    private void sendMenu(Long chatId) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        message.setText("Выберите валюту и информацию:");
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> keyboard = new ArrayList<>();
+
+        // Список валют
+        List<String> symbols = Arrays.asList("BTC-USDT", "ETH-USDT", "ADA-USDT");
+
+        for (String symbol : symbols) {
+            // Кнопки для каждой валюты
+            List<InlineKeyboardButton> row = new ArrayList<>();
+
+            InlineKeyboardButton statsButton = new InlineKeyboardButton();
+            statsButton.setText(symbol + " Stats");
+            statsButton.setCallbackData(symbol + ":STATS");
+
+            InlineKeyboardButton highLowButton = new InlineKeyboardButton();
+            highLowButton.setText(symbol + " High/Low");
+            highLowButton.setCallbackData(symbol + ":HIGH_LOW");
+
+            InlineKeyboardButton volumeButton = new InlineKeyboardButton();
+            volumeButton.setText(symbol + " Volume");
+            volumeButton.setCallbackData(symbol + ":VOLUME");
+
+            row.add(statsButton);
+            row.add(highLowButton);
+            row.add(volumeButton);
+            keyboard.add(row);
+        }
+
+        markup.setKeyboard(keyboard);
+        message.setReplyMarkup(markup);
+
+        try {
+            execute(message);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
+    private void sendText(Long chatId, String text) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        message.setText(text);
 
-    private void sendMessageFromBot(String answer, Long userId) {
-        SendMessage sm = new SendMessage();
-        sm.setChatId(userId.toString());
-        sm.setText(answer);
         try {
-            execute(sm);
-        } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-
-    /**
-     * внутри этого метода код, который срабатывает, когда пользователь боту отправляет какой-то текст
-     * @param update
-     * @return id пользователя, который отправил боту текст
-     */
-    Long whenUserSendTextToBot(Update update) {
-        Long id;
-        Message msg = update.getMessage();
-        String message = msg.getText();//сообщение пользователя
-
-        User user = msg.getFrom(); //сам пользователь
-        id = user.getId(); // id пользователя
-        String userName = user.getUserName(); //юзернейм пользователя
-
-        if (message.equals("/catfact"))  {
-            String json = getCatFact();
-            sendMessageFromBot("Данные о крипте: " + json, id);
-
-        }
-        return id;
-    }
-
-
-    void whenUserClickOnButtonInBot(CallbackQuery callbackQuery, Long userId, String answer) {
-        userId = callbackQuery.getFrom().getId();
-
-        String callbackData = callbackQuery.getData(); //то что записали в setCallbackData
-        if (callbackData.equals("1")) {
-            sendSticker(userId, "CAADBQADiQMAAukKyAPZH7wCI2BwFxYE");
-        }
-        if (callbackData.equals("5")) {
-            sendSticker(userId, "CAACAgIAAxkBAAELFqxnZrGLFSocTeIr51B0aZxrtKeeHQACixkAAsdQEUgftNzUEaWFKDYE");
-        }
-        if (callbackData.equals("2")) {
-            answer = "привет";
-        }
-    }
-
-
-    // отдельный метод
-    private void sendSticker(Long chatID, String name) {
-        try {
-            SendSticker sticker_msg = new SendSticker();
-            sticker_msg.setChatId(chatID.toString());
-            sticker_msg.setSticker(new InputFile(name));
-            execute(sticker_msg);
+            execute(message);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-
-    private String getCatFact() {
-        String s = "";
+    private String getMarketStats(String symbol) {
         try {
-            URL url = new URL("https://api.kucoin.com/api/v1/market/stats?symbol=BTC-USDT");
-            HttpURLConnection httpURLConnection = (HttpURLConnection) url.openConnection();
-            httpURLConnection.setRequestMethod("GET");
-            httpURLConnection.setRequestProperty("accept", "application/json");
+            URL url = new URL("https://api.kucoin.com/api/v1/market/stats?symbol=" + symbol);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
 
-            BufferedReader in = new BufferedReader(new InputStreamReader((httpURLConnection.getInputStream())));
-
+            BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder response = new StringBuilder();
             String inputLine;
             while ((inputLine = in.readLine()) != null) {
-                    s = s + inputLine;
+                response.append(inputLine);
             }
+            in.close();
+
+            // Парсинг текущей цены
+            String responseStr = response.toString();
+            int lastIndex = responseStr.indexOf("\"last\":\"") + 8;
+            String lastPrice = responseStr.substring(lastIndex, responseStr.indexOf("\"", lastIndex));
+
+            return "Текущая цена " + symbol + ": " + lastPrice + " USDT";
         } catch (Exception e) {
             e.printStackTrace();
+            return "Ошибка получения данных.";
         }
-        return s;
     }
-    //убрать клавиатуру
-    //добавить доп команду /catfact
+
+    private String getMarketHighLow(String symbol) {
+        try {
+            URL url = new URL("https://api.kucoin.com/api/v1/market/stats?symbol=" + symbol);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+
+            BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String inputLine;
+            while ((inputLine = in.readLine()) != null) {
+                response.append(inputLine);
+            }
+            in.close();
+
+            // Парсинг high и low
+            String responseStr = response.toString();
+            int highIndex = responseStr.indexOf("\"high\":\"") + 8;
+            String high = responseStr.substring(highIndex, responseStr.indexOf("\"", highIndex));
+
+            int lowIndex = responseStr.indexOf("\"low\":\"") + 7;
+            String low = responseStr.substring(lowIndex, responseStr.indexOf("\"", lowIndex));
+
+            return "Максимум за сутки: " + high + " USDT\nМинимум за сутки: " + low + " USDT";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "Ошибка получения данных.";
+        }
+    }
+
+    private String getMarketVolume(String symbol) {
+        try {
+            URL url = new URL("https://api.kucoin.com/api/v1/market/stats?symbol=" + symbol);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+
+            BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            StringBuilder response = new StringBuilder();
+            String inputLine;
+            while ((inputLine = in.readLine()) != null) {
+                response.append(inputLine);
+            }
+            in.close();
+
+            // Парсинг объема торгов
+            String responseStr = response.toString();
+            int volIndex = responseStr.indexOf("\"vol\":\"") + 7;
+            String volume = responseStr.substring(volIndex, responseStr.indexOf("\"", volIndex));
+
+            return "Объем торгов " + symbol + ": " + volume + " BTC";
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "Ошибка получения данных.";
+        }
+    }
 }
